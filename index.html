@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB"
+    crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css?family=Kanit" rel="stylesheet">
+</head>
+
+<body>
+
+
+  <style>
+    body {
+      font-family: 'Kanit', sans-serif;
+    }
+  </style>
+
+  <h1> สวัสดีชาวโลก</h1>
+  <object id="webcard" type="application/x-webcard" width="0" height="0">
+    <param name="onload" value="pluginLoaded" />
+  </object>
+  <script>
+    function cardRemoved(reader) {
+      // $scope.person = null;
+      // $scope.cardInserted = false;
+      // $scope.$apply();
+    }
+    cardPresent = function (reader) {
+      //            console.log("Card Present");
+      // $scope.hasResult = false;
+      // $scope.cardInserted = true;
+      // toastr.info("Card Inserted");
+      retryCount = 0;
+      // var tryCount = 0;
+      // var tagConnected = false;
+      // while (tryCount < 300 && !tagConnected) {
+      //     tagConnected = readCard(reader);
+      //     if (tagConnected) return;
+      //     tryCount++;
+      // }
+      refreshIntervalId = setInterval(readCard(reader), 500);
+
+    }
+
+    function hex2a(hexx) {
+      var hex = hexx.toString(); //force conversion
+      var str = "";
+      var tmp = "";
+      var patt = /^[a-zA-Z0-9&@.$%\-,():;`# \/]+$/;
+      for (var i = 0; i < hex.length; i += 2) {
+        tmp = String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+        if (tmp.match(patt)) {} else {
+          tmp = String.fromCharCode(parseInt(hex.substr(i, 2), 16) + 3424);
+        }
+        str += tmp;
+      }
+
+      str = str.replace(/#/g, " ");
+      return str;
+    }
+    var refreshIntervalId;
+    var retryCount = 0;
+
+    function readCard(reader) {
+
+      try {
+        reader.connect(2); // 1-Exclusive, 2-Shared
+      } catch (err) {
+        // console.log(err);
+        retryCount++;
+        if (retryCount >= 6) {
+          clearInterval(refreshIntervalId);
+          //toastr.error("Timeout Reader");
+        }
+        return false;
+      }
+
+      clearInterval(refreshIntervalId);
+      var person = {
+        address: "",
+        sub_district: "",
+        district: "",
+        province: "",
+        // studentCode: $scope.sid,
+      };
+      //               console.log(new Date() + "Card Inserted");
+      //            console.log("ATR : " + reader.atr);
+      // reader.connect(1 ); // 1-Exclusive, 2-Shared
+      var cmd_select = "00A4040008A000000054480001";
+      reader.transcieve(cmd_select);
+
+      // Citizen ID
+      var cmd_cid = "80B0000402000D";
+      resp = reader.transcieve(cmd_cid);
+      if (resp.length > 4) resp = resp.slice(0, -4);
+      //   console.log(new Date() + "CID : " + hex2a(resp));
+      person.citizen_id = hex2a(resp);
+
+      // Person Info
+      var cmd_person_info = "80B000110200D1";
+      // reader.transcieve(cmd_select);
+      resp = reader.transcieve(cmd_person_info);
+      if (resp.length > 4) resp = resp.slice(0, -4);
+      var info = hex2a(resp);
+      //   console.log(new Date() + "INFO : " + info);
+
+      var tmp = info.split(" ");
+      i = 0;
+      infoMapper = ["title_th", "firstname_th", "lastname_th", "title_en", "firstname_en", "lastname_en", "dob",
+        "gender"
+      ];
+      for (var k in tmp) {
+        if (tmp[k] == "") continue;
+        if (infoMapper[i] == "dob") {
+          person[infoMapper[i++]] = tmp[k].slice(0, -1);
+          person[infoMapper[i]] = tmp[k].slice(-1);
+        } else person[infoMapper[i]] = tmp[k];
+        i++;
+      }
+
+      // 80B01579020064
+      var cmd_addres = "80B01579020064";
+      resp = reader.transcieve(cmd_addres);
+      if (resp.length > 4) resp = resp.slice(0, -4);
+      var tmp = hex2a(resp).split(" ");
+
+      for (var k in tmp) {
+        if (tmp[k] == "") continue;
+        if (tmp[k].match(/(à¸•à¸³à¸šà¸¥|à¹€à¸‚à¸•)/)) person.sub_district = tmp[k];
+        else if (tmp[k].match(/(à¸­à¸³à¹€à¸ à¸­|à¹à¸‚à¸§à¸‡)/)) person.district = tmp[k];
+        else if (tmp[k].match(/(à¸ˆà¸±à¸‡à¸«à¸§à¸±à¸”|à¸à¸£à¸¸à¸‡à¹€à¸—à¸ž)/)) person.province = tmp[k];
+        else person.address += tmp[k] + " ";
+      }
+
+      var cmd_issue = "80B00167020012";
+      resp = reader.transcieve(cmd_issue);
+      if (resp.length > 4) resp = resp.slice(0, -4);
+      var tmp = hex2a(resp);
+      if (tmp.length >= 16) {
+        person.issue = tmp.slice(0, 8);
+        person.expire = tmp.slice(8, 16);
+      }
+
+      person.address = person.address.trim();
+      console.log(person);
+     // $scope.person = person;
+      //$scope.$apply();
+      reader.disconnect();
+
+      // Custom
+      $("#student-firstname").val(person.firstname_th);
+      $("#student-lastname").val(person.lastname_th);
+      // dob
+      var dob = person.dob;
+      $("#student-dob").val(dob.substring(6, 8) + "-" + dob.substring(4, 6) + "-" + dob.substring(0, 4));
+      // title
+      var title = person.title_th;
+      $("#student-title").val($("#student-title option:contains('" + title + "')").val());
+      $("#student-citizen_id").val(person.citizen_id);
+      fetchStudent("citizen_id");
+
+      return true;
+    }
+
+
+    window.webcard = document.getElementById("webcard");
+    if (webcard.attachEvent) {
+      webcard.attachEvent("oncardpresent", cardPresent);
+      webcard.attachEvent("oncardremoved", cardRemoved);
+    } else {
+      webcard.addEventListener("cardpresent", cardPresent, false);
+      webcard.addEventListener("cardremoved", cardRemoved, false);
+    }
+    var getQueryString = function (field, url) {
+      var href = url ? url : window.location.href;
+      var reg = new RegExp("[?&]" + field + "=([^&#]*)", "i");
+      var string = reg.exec(href);
+      return string ? string[1] : null;
+    };
+  </script>
+</body>
+
+</html>
